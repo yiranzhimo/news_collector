@@ -2,38 +2,35 @@ from flask import Flask, request
 import os
 import requests
 from bs4 import BeautifulSoup
+import chardet  # ✅ 新增：自动检测网页编码
 
 app = Flask(__name__)
 
 # 从 Vercel 环境变量读取
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
-REPO = os.environ.get("REPO")  # 例如 "yiranzhimo/news_collector"
+REPO = os.environ.get("REPO")
 
 print("🔹 Debug Info:")
 print("BOT_TOKEN:", BOT_TOKEN)
 print("REPO:", REPO)
 
 def fetch_page_info(link):
-    """自动识别编码、提取网页标题与摘要（防乱码版）"""
+    """可靠的网页抓取函数，防乱码（自动检测编码）"""
     try:
         res = requests.get(link, timeout=10)
-        encoding = res.encoding.lower() if res.encoding else ""
+        # 直接检测原始字节流编码
+        raw_data = res.content
+        detected = chardet.detect(raw_data)
+        encoding = detected.get("encoding", "utf-8")
 
-        # 如果编码缺失或是默认的 ISO-8859-1，则重新检测
-        if encoding in ["iso-8859-1", "", None]:
-            detected = requests.utils.get_encodings_from_content(res.text)
-            if detected:
-                res.encoding = detected[0]
-            else:
-                res.encoding = res.apparent_encoding  # 使用 requests 自动猜测
-        
-        # 针对常见中文网站，强制使用 gbk 避免乱码
-        chinese_domains = ["sina.com.cn", "163.com", "qq.com", "ifeng.com", "sohu.com", "people.com.cn"]
-        if any(domain in link for domain in chinese_domains):
-            res.encoding = "gbk"
+        # 特例：常见中文网站一律强制 GBK 优先
+        if any(domain in link for domain in ["sina.com.cn", "163.com", "qq.com", "ifeng.com", "sohu.com", "people.com.cn"]):
+            encoding = "gbk"
 
-        soup = BeautifulSoup(res.text, "html.parser")
+        text = raw_data.decode(encoding, errors="ignore")
+        soup = BeautifulSoup(text, "html.parser")
+
         title = soup.title.string.strip() if soup.title else "No Title"
         paragraphs = " ".join(p.get_text() for p in soup.find_all("p"))
         summary = paragraphs[:200] + "..." if len(paragraphs) > 200 else paragraphs
