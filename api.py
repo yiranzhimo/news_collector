@@ -1,14 +1,15 @@
 from flask import Flask, request
 import requests
 from bs4 import BeautifulSoup
+import os  # <-- 用来读取环境变量
 
 app = Flask(__name__)
 
-# ========== 配置信息 ==========
-GITHUB_TOKEN = "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"
-REPO = "yiranzhimo/news_collector/"  # 例如 "li-qian/news-collector"
-BOT_TOKEN = "8317115528:AAG7PP3H1wqPNzdHO1u4Lyt_nWZYmZxt-wY"
-# ==============================
+# ======== 从环境变量读取 ========
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
+REPO = os.environ.get("REPO")          # 例如 "li-qian/news-collector"
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+# ================================
 
 def create_issue(title, body):
     url = f"https://api.github.com/repos/{REPO}/issues"
