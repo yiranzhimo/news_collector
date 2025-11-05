@@ -19,19 +19,35 @@ def fetch_page_info(link):
     """可靠的网页抓取函数，防乱码（自动检测编码）"""
     try:
         res = requests.get(link, timeout=10)
-        # 直接检测原始字节流编码
         raw_data = res.content
-        detected = chardet.detect(raw_data)
-        encoding = detected.get("encoding", "utf-8")
 
-        # 特例：常见中文网站一律强制 GBK 优先
-        if any(domain in link for domain in ["sina.com.cn", "163.com", "qq.com", "ifeng.com", "sohu.com", "people.com.cn"]):
-            encoding = "gbk"
+        # 交给 BeautifulSoup 从字节流自动识别编码（优先使用页面 <meta charset>）
+        soup = BeautifulSoup(raw_data, "lxml")
 
-        text = raw_data.decode(encoding, errors="ignore")
-        soup = BeautifulSoup(text, "html.parser")
+        # 若标题缺失，再退回到 requests/chardet 猜测
+        if soup.title and soup.title.string:
+            title = soup.title.string.strip()
+        else:
+            detected = chardet.detect(raw_data)
+            enc_candidates = [
+                res.encoding,
+                detected.get("encoding"),
+                getattr(res, "apparent_encoding", None),
+                "utf-8",
+                "gb18030",
+            ]
+            seen = set()
+            text = None
+            for enc in [e for e in enc_candidates if e and not (e in seen or seen.add(e))]:
+                try:
+                    text = raw_data.decode(enc)
+                    break
+                except Exception:
+                    continue
+            text = text or raw_data.decode("utf-8", errors="ignore")
+            soup = BeautifulSoup(text, "lxml")
+            title = soup.title.string.strip() if soup.title else "No Title"
 
-        title = soup.title.string.strip() if soup.title else "No Title"
         paragraphs = " ".join(p.get_text() for p in soup.find_all("p"))
         summary = paragraphs[:200] + "..." if len(paragraphs) > 200 else paragraphs
 
