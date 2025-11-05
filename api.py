@@ -21,10 +21,18 @@ def fetch_page_info(link):
         res = requests.get(link, timeout=10)
         raw_data = res.content
 
-        # 交给 BeautifulSoup 从字节流自动识别编码（优先使用页面 <meta charset>）
-        soup = BeautifulSoup(raw_data, "lxml")
+        # 优先从页面内容自动识别编码构建 soup，支持无 lxml 环境
+        soup = None
+        for parser in ("lxml", "html.parser"):
+            try:
+                soup = BeautifulSoup(raw_data, parser)
+                break
+            except Exception:
+                continue
+        if soup is None:
+            raise RuntimeError("No HTML parser available")
 
-        # 若标题缺失，再退回到 requests/chardet 猜测
+        # 若标题缺失，再回退按多编码解码后重建 soup
         if soup.title and soup.title.string:
             title = soup.title.string.strip()
         else:
@@ -45,10 +53,16 @@ def fetch_page_info(link):
                 except Exception:
                     continue
             text = text or raw_data.decode("utf-8", errors="ignore")
-            soup = BeautifulSoup(text, "lxml")
-            title = soup.title.string.strip() if soup.title else "No Title"
 
-        paragraphs = " ".join(p.get_text() for p in soup.find_all("p"))
+            for parser in ("lxml", "html.parser"):
+                try:
+                    soup = BeautifulSoup(text, parser)
+                    break
+                except Exception:
+                    continue
+            title = soup.title.string.strip() if soup and soup.title else "No Title"
+
+        paragraphs = " ".join(p.get_text() for p in soup.find_all("p")) if soup else ""
         summary = paragraphs[:200] + "..." if len(paragraphs) > 200 else paragraphs
 
         return title, summary
